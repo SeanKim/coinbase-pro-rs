@@ -607,4 +607,44 @@ mod tests {
 
         assert!(s.uuid.is_none());
     }
+
+    use crate::{
+        structs::wsfeed::{Channel, ChannelType, Message},
+        ASync, Public, WSFeed, MAIN_URL, WS_URL,
+    };
+    use futures::StreamExt;
+
+    #[tokio::test]
+    #[ignore]
+    async fn subscribe_all() {
+        let client: Public<ASync> = Public::new(MAIN_URL);
+        let products = client.get_products().await.unwrap();
+        let pids = products.iter().map(|p| p.id.as_str()).collect::<Vec<_>>();
+        let stream = WSFeed::new(
+            WS_URL,
+            // &["BTC-USD"],
+            pids.as_slice(),
+            &[ChannelType::Full],
+        );
+        stream
+            // .take_while(|_| async { true })
+            .fold(1usize, |cnt, msg| async move {
+                let msg = msg.unwrap();
+                match msg {
+                    Message::Subscriptions { channels } => {
+                        if let Channel::WithProduct { product_ids, .. } = channels.get(0).unwrap() {
+                            println!("subscribed length: {:?}", product_ids.len())
+                        }
+                    }
+                    Message::Full(msg) => {
+                        if cnt % 100 == 0 {
+                            println!("{:?} {:?}", chrono::Utc::now(), msg.time());
+                        }
+                    }
+                    _ => {}
+                }
+                cnt + 1
+            })
+            .await;
+    }
 }
