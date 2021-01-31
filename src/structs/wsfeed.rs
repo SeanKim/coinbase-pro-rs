@@ -503,7 +503,7 @@ impl<'de> Deserialize<'de> for Message {
 mod tests {
     use super::*;
     use serde_json;
-    use std::str::FromStr;
+    use std::{collections::HashMap, str::FromStr};
 
     #[test]
     fn test_parse_numbers() {
@@ -628,7 +628,7 @@ mod tests {
         );
         stream
             // .take_while(|_| async { true })
-            .fold(1usize, |cnt, msg| async move {
+            .fold(HashMap::new(), |mut map, msg| async move {
                 let msg = msg.unwrap();
                 match msg {
                     Message::Subscriptions { channels } => {
@@ -637,13 +637,20 @@ mod tests {
                         }
                     }
                     Message::Full(msg) => {
-                        if cnt % 100 == 0 {
-                            println!("{:?} {:?}", chrono::Utc::now(), msg.time());
+                        let pid = msg.product_id().to_string();
+                        let seq = *msg.sequence().unwrap();
+                        let prev_seq = map.entry(pid.clone()).or_insert(seq - 1);
+
+                        assert_eq!(*prev_seq + 1, seq);
+                        *prev_seq = seq;
+
+                        if seq % 100 == 0 {
+                            println!("{:?}, {:?}", pid, chrono::Utc::now() - *msg.time().unwrap());
                         }
                     }
                     _ => {}
                 }
-                cnt + 1
+                map
             })
             .await;
     }
